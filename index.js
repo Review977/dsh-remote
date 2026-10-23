@@ -16,11 +16,28 @@
  * 姿态探测、自绘设置卡片——这些是为「发行给别人用」服务的，自用不需要。
  */
 
+import { readFileSync } from 'node:fs'
 import { DeviceStore, defaultDevicesFile } from './lib/devices.js'
 import { createGate } from './lib/gate.js'
 import { createInnerAuth } from './lib/inner-auth.js'
 import { firstLanIPv4 } from './lib/net.js'
 import { resolveCloudflared, startTunnel } from './lib/tunnel.js'
+
+/**
+ * 插件版本：直接从同目录的 package.json 读。
+ *
+ * 为什么要暴露这个：宿主模块是按 URL 缓存的，卸载重装不会换掉已加载的代码。
+ * 只靠 health 的字段多少去猜「现在跑的是哪一版」太笨，直接报版本号最省事。
+ */
+export const VERSION = (() => {
+  try {
+    const raw = readFileSync(new URL('./package.json', import.meta.url), 'utf8')
+    const parsed = JSON.parse(raw)
+    return typeof parsed.version === 'string' ? parsed.version : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+})()
 
 /** 稳定 cordis 插件名。 */
 export const name = 'dsh-remote'
@@ -247,6 +264,7 @@ export function apply(ctx, rawConfig) {
       config,
       clientSeen,
       profileName,
+      version: VERSION,
     }
   }
 
@@ -260,6 +278,7 @@ export function apply(ctx, rawConfig) {
     upstream,
     gateName: 'DSH 远程门控',
     profileName,
+    version: VERSION,
   })
 
   ctx.effect(() => {

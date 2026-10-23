@@ -324,6 +324,26 @@ PATH="$(pwd)/scripts/bin:$PATH" ELECTRON_RUN_AS_NODE=1 "$APP" "$CLI" --profile r
    「本机」= 源地址与 Host 都是本机自己的网卡地址（远程机器的源地址不可能是
    本机地址），且**没有转发头**——转发头那条是硬约束，反代就是从本机拨进来的。
 
+## 怎么确认现在跑的是哪一版
+
+```sh
+curl -s http://127.0.0.1:8790/__remote/health
+```
+
+```json
+{"ok":true,"version":"0.1.4","port":8790,"upstreamPort":3080,
+ "upstream":"http://127.0.0.1:3080","upstreamHostHeader":"127.0.0.1:3080",
+ "credential":"dsh-auth-xxxx"}
+```
+
+- `version` 是插件自己的版本（从 package.json 读），也是「代码有没有换掉」的唯一可靠判据
+- `credential` 是内层官方凭据的名字（`none` = 没换成，转发会吃 401）
+- 状态页右上角也会显示同一个版本号
+
+> **改了宿主半侧必须重启 App**：宿主模块按 URL 缓存，`node_modules/@local/dsh-remote`
+> 路径不变，卸载重装只换磁盘内容、**不会换掉已加载的模块**。所以更新流程是
+> 「卸载 → 重装 → 重启 App」。`version` 没变就是没生效。
+
 ## 换电脑 / 多台机器
 
 插件本体（`index.js` + `lib/` + `cordis.patch.yml` + `package.json`）**零依赖、零写死路径**，
