@@ -67,6 +67,20 @@ App，行为一样。
   exclusively by the Electron application`）→ 脚本改用 App 内置的
   `dsh-desktop-host` CLI，那个才管得了 desktop。
 
+### 桌面端（图形界面装）
+
+App 里的「设置 → 插件 → 添加插件」**直接贴 GitHub 地址就行**，不用命令行：
+
+```
+github:Review977/dsh-remote
+```
+
+实测（2026-10，v0.1.0）：填进去点安装，约 7 秒装完，对话框显示「已安装 / Git 仓库 / 版本 0.1.0」。
+它会在原地把来源从 `link:` 换成 git 快照，**门控和隧道不断**，已配对设备也不用重配。
+
+> 注意：换成 git 快照之后，改本地目录里的代码**不会**生效（装的是仓库里的那份拷贝）。
+> 想继续本地开发，跑一次 `./scripts/install.sh` 就会切回 `link:`。
+
 ### 从本地目录装（开发用）
 
 ```sh
