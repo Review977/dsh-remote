@@ -410,3 +410,15 @@ profile（`scripts/install.sh` 用的就是它），所以装机不用走图形�
 - named tunnel（固定域名，重启不换链接）
 - 只读模式 / 按会话授权（官方 `remoteAccess` 那套 role/policy 已经在 base 里）
 - 门控自己上 TLS（`ctx.webServer` 的 `tls` 只服务官方监听，门控要自己读证书）
+
+## 已知限制
+
+- **上游只支持明文 HTTP**：门控固定用 `http.request` 连 `127.0.0.1:<端口>`。如果官方
+  服务自己开了 TLS（`dsh web --tls-cert …`），这条会 502。TLS 应该终结在门控或隧道
+  那一层，而不是官方监听。
+- **设备库是全局共用**（`~/.dsh/remote-gate/devices.json`），不按 profile 分。多个
+  profile 同时装着本插件时，在开发 profile 里配对会出现在正式 profile 的设备列表里，
+  用完记得吊销。曾经试过按 profile 分库，结果是「谁先启动谁认领旧库」，把线上配对
+  搞丢过，所以退回来了。
+- **`/__dsh-remote/gate` 与 `/__dsh-remote/seen` 不需要鉴权**：前者返回门控地址（那个
+  地址本来就写在页面里），后者只是个渲染计数。都不含凭据。

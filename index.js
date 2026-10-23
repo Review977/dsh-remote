@@ -148,7 +148,20 @@ export function apply(ctx, rawConfig) {
   }
   config.bindAddress = bindAddress
 
+  /**
+   * 当前 profile 名：优先问 profileContext（官方给的口径），拿不到就留空。
+   * 用途有两个——配置写回哪个 profile、设备库归属哪个实例。
+   */
+  const profileName = (() => {
+    const context = optionalService(ctx, 'profileContext')
+    const name = context?.name
+    return typeof name === 'string' && name.length > 0 ? name : ''
+  })()
+
   const devices = new DeviceStore({
+    // 注意：设备库是**共用**的（不按 profile 分）。分库会让「谁先启动谁认领旧库」，
+    // 实测把线上 profile 的配对搞丢过。代价是开发 profile 里配对会出现在正式
+    // profile 的列表里——用完记得吊销。
     file: defaultDevicesFile(),
     pairTtlMs: config.pairTtlSeconds * 1000,
     deviceTtlMs: config.deviceTtlDays * 24 * 60 * 60 * 1000,
@@ -213,6 +226,7 @@ export function apply(ctx, rawConfig) {
       warnings,
       config,
       clientSeen,
+      profileName,
     }
   }
 
@@ -224,6 +238,7 @@ export function apply(ctx, rawConfig) {
     getState: async () => buildState(),
     upstreamPort,
     gateName: 'DSH 远程门控',
+    profileName,
   })
 
   ctx.effect(() => {
