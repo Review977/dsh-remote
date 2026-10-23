@@ -42,34 +42,38 @@
 
 ## 安装
 
-一条命令，`desktop` profile 也可以：
+从 GitHub 直接装（推荐，不用克隆）：
 
 ```sh
-./scripts/install.sh            # 默认装进 desktop
-./scripts/install.sh remotedev  # 装进别的 profile
+dsh plugin --profile web add github:Review977/dsh-remote
+```
+
+桌面端（`desktop` profile 由 App 托管、CLI 会拒绝）用本仓库的脚本：
+
+```sh
+./scripts/install.sh            # 默认 desktop
+./scripts/install.sh remotedev  # 别的 profile
 ```
 
 装完**当场就生效**：正在运行的 App 会随 profile 变更热重组，插件立刻挂载
-（实测：`plugin add` 之后 8790 端口立刻开始监听，不需要重启）。不放心就重启一次
+（实测：`plugin add` 之后门控端口立刻开始监听，不需要重启）。不放心就重启一次
 App，行为一样。
 
 脚本替你填了两个坑：
 
 - App 自带的 pnpm 在 App 内部，而 dsh CLI 只从 PATH 找 pnpm → 脚本生成
-  `scripts/bin/pnpm` 这个 shim 转过去（不需要你另外装 pnpm）。
+  `scripts/bin/pnpm` 这个 shim 转过去。
 - npm 版的 `dsh` CLI 拒绝管理 `desktop` profile（`profile "desktop" is managed
   exclusively by the Electron application`）→ 脚本改用 App 内置的
   `dsh-desktop-host` CLI，那个才管得了 desktop。
 
-### 也可以从图形界面装
+### 从本地目录装（开发用）
 
-DSH 桌面端 → **设置 → 插件 → 添加插件 → 安装第三方插件 → 本地绝对路径**，填：
-
-```
-<本插件目录的绝对路径>
+```sh
+dsh plugin --profile web add link:<本插件目录的绝对路径>
 ```
 
-装完在插件页**启用**这一行。等价于上面那条命令。
+或者图形界面：**设置 → 插件 → 添加插件 → 安装第三方插件 → 本地绝对路径**。
 
 ### 卸载
 
@@ -155,6 +159,8 @@ https://dsh.example.com/  →  门控 127.0.0.1:8790  →  官方 GUI
 ### 插件页里也能进
 
 「设置 → 插件 → 本插件」的详情页底下会多一块**远程门控**，直接显示门控页地址，点开就是状态页。
+
+![插件页里的远程门控入口](docs/plugin-page.png)
 地址是宿主注入的（`window.__DSH_REMOTE_GATE__`），换端口也跟着变。
 
 > **注入方式有讲究**：门控地址用 `webserver/index-inject` 的**结构化行**注入，不是
