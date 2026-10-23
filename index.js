@@ -168,13 +168,33 @@ export function apply(ctx, rawConfig) {
     log,
   })
 
+  /**
+   * 上游的真实 origin：官方可能绑在别的地址、也可能开了 TLS。
+   * getOrigin() 给的就是「协议 + 实际绑定地址 + 端口」，比自己拼靠谱。
+   */
+  const upstream = (() => {
+    const fallback = { protocol: 'http:', hostname: '127.0.0.1', port: upstreamPort }
+    try {
+      const origin = ctx.webServer.getOrigin()
+      const parsed = new URL(origin)
+      return {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: Number(parsed.port) || upstreamPort,
+      }
+    } catch {
+      return fallback
+    }
+  })()
+
   const connection = optionalService(ctx, 'connection')
   const innerAuth = createInnerAuth(() => {
     const service = connection ?? optionalService(ctx, 'connection')
     const make = service?.authenticatedUrl
     if (typeof make !== 'function') return undefined
     try {
-      return make.call(service, `http://127.0.0.1:${String(upstreamPort)}/`)
+      const base = `${upstream.protocol}//${upstream.hostname.includes(':') ? `[${upstream.hostname}]` : upstream.hostname}:${String(upstream.port)}/`
+      return make.call(service, base)
     } catch {
       return undefined
     }
@@ -218,7 +238,7 @@ export function apply(ctx, rawConfig) {
     if (tunnelInfo.url !== undefined) addresses.push(tunnelInfo.url)
     return {
       listen: `${bindAddress}:${String(gate.port ?? config.port)}`,
-      upstream: `http://127.0.0.1:${String(upstreamPort)}`,
+      upstream: `${upstream.protocol}//${upstream.hostname}:${String(upstream.port)}`,
       tunnel: tunnelInfo,
       code: devices.activeCode(),
       devices: devices.list().map((device) => ({ ...device, online: gate.isDeviceOnline(device.id) })),
@@ -237,6 +257,7 @@ export function apply(ctx, rawConfig) {
     log,
     getState: async () => buildState(),
     upstreamPort,
+    upstream,
     gateName: 'DSH 远程门控',
     profileName,
   })
@@ -250,7 +271,7 @@ export function apply(ctx, rawConfig) {
         devices.issueCode()
         const shownHost = bindAddress.includes(':') ? `[${bindAddress}]` : bindAddress
         gateOrigin = `http://${shownHost}:${String(port)}/__remote/`
-        log(`门控已监听 ${bindAddress}:${String(port)} → 上游 http://127.0.0.1:${String(upstreamPort)}`)
+        log(`门控已监听 ${bindAddress}:${String(port)} → 上游 ${upstream.protocol}//${upstream.hostname}:${String(upstream.port)}`)
         log(`状态页（仅本机）：http://127.0.0.1:${String(port)}/__remote/`)
         if (config.tunnel !== 'off' && cloudflaredBin !== undefined) {
           tunnel = startTunnel({

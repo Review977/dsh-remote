@@ -132,6 +132,10 @@ PATH="$PWD/scripts/bin:$PATH" ELECTRON_RUN_AS_NODE=1 "$APP" --expose-internals "
 手机 ──https──> Cloudflare 边缘 ──反向隧道（Mac 主动外连）──> 门控 127.0.0.1:8790 ──> 官方 GUI
 ```
 
+上游协议是自适应的：门控用 `ctx.webServer.getOrigin()` 拿到官方监听的真实 origin，
+官方开 TLS（`dsh web --tls-cert … --tls-key …`）时，HTTP 转发和 WebSocket 升级都会走
+`https`/`tls.connect`，自签证书按「本机到自己」处理（不做链校验）。
+
 `named` 模式在 Cloudflare 后台建一条 tunnel，把 hostname 指到
 `http://127.0.0.1:8790`，然后填两行配置：
 
@@ -413,9 +417,6 @@ profile（`scripts/install.sh` 用的就是它），所以装机不用走图形�
 
 ## 已知限制
 
-- **上游只支持明文 HTTP**：门控固定用 `http.request` 连 `127.0.0.1:<端口>`。如果官方
-  服务自己开了 TLS（`dsh web --tls-cert …`），这条会 502。TLS 应该终结在门控或隧道
-  那一层，而不是官方监听。
 - **设备库是全局共用**（`~/.dsh/remote-gate/devices.json`），不按 profile 分。多个
   profile 同时装着本插件时，在开发 profile 里配对会出现在正式 profile 的设备列表里，
   用完记得吊销。曾经试过按 profile 分库，结果是「谁先启动谁认领旧库」，把线上配对
