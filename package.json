@@ -1,0 +1,59 @@
+{
+  "name": "@local/dsh-remote",
+  "version": "0.1.0",
+  "description": "自己的 DSH 远程控制插件：配对门控 + 设备会话 + 局域网/隧道通道，把本机 Web GUI 安全地交给手机",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.2.1-rc.2"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5"
+  },
+  "author": {
+    "name": "Review977",
+    "url": "https://github.com/Review977"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Review977/dsh-remote.git"
+  },
+  "homepage": "https://github.com/Review977/dsh-remote#readme",
+  "bugs": {
+    "url": "https://github.com/Review977/dsh-remote/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "remote-control",
+    "cloudflared",
+    "reverse-proxy"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

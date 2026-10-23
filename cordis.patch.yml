@@ -1,0 +1,33 @@
+# dsh-remote 的 profile patch 层：把一个宿主插件行插进 profile 树。
+# 宿主半侧自带 HTTP 门控监听、配对与设备会话、可选 cloudflared 隧道；
+# 不需要任何浏览器半侧（客户端插件）代码，管理页面由宿主自己渲染。
+#
+# 安装：在 profile 目录里 pnpm add link:<本目录>，或由插件管理器
+# 「安装第三方插件 → 本地目录」选择本目录。
+
+- insert:
+    - id: dsh-remote
+      name: '@local/dsh-remote'
+      config:
+        # 总开关；关掉后门控监听不会启动。
+        enabled: true
+        # 门控监听绑定的地址：
+        #   127.0.0.1 = 只有本机 + 隧道能进（推荐，最安全）
+        #   lan       = 自动选第一个非回环 IPv4，同一局域网可直连
+        #   也可以写具体的 IPv4/IPv6 字面量
+        bind: 127.0.0.1
+        # 门控监听端口。
+        port: 8790
+        # 出网通道：off = 只做本地/局域网门控；quick = 顺手拉起
+        # cloudflared 快速隧道，拿一个临时公网 https 地址。
+        tunnel: off
+        # 是否要求非回环请求必须持有配对设备 Cookie。
+        # 只有在完全可信的网络里才建议关掉。
+        requirePairing: true
+        # 配对设备会话有效期（天）。
+        deviceTtlDays: 30
+        # 一次性配对码有效期（秒）。120 秒足够扫码/手输，短一点更安全。
+        pairTtlSeconds: 120
+        # 自定义 cloudflared 可执行文件路径；留空则依次找
+        # CLOUDFLARED_BIN 环境变量、PATH、node_modules/cloudflared。
+        cloudflaredPath: ''
