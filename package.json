@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-remote",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "自己的 DSH 远程控制插件：配对门控 + 设备会话 + 局域网/隧道通道，把本机 Web GUI 安全地交给手机",
   "type": "module",
   "main": "index.js",
