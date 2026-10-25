@@ -1,9 +1,12 @@
 {
   "name": "@local/dsh-remote",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "自己的 DSH 远程控制插件：配对门控 + 设备会话 + 局域网/隧道通道，把本机 Web GUI 安全地交给手机",
   "type": "module",
   "main": "index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./lib/client.js",

@@ -253,6 +253,16 @@ https://dsh.example.com/  →  门控 127.0.0.1:8790  →  官方 GUI
   `Set-Cookie` 被剥掉，客户端拿到的只有我们自己的设备 cookie。
 - **Origin / 调用方 Cookie / Sec-Fetch-* 一律不转发**，只转发白名单请求头，并合成
   `sec-fetch-site: same-origin` 与 `Host: 127.0.0.1:<port>`。
+- **管理面表单带令牌**：状态页 / 配对页的每个表单都带进程级随机令牌（`?t=…`）。
+  本地请求只要带对令牌就不再走 Origin 判定——来源不透明的载体（`Origin: null`）里
+  页面能打开、按钮也能按；跨源页面读不到这份 HTML，拿不到令牌，所以这条路挡得住。
+  被拒请求会往 `~/.dsh/remote-gate/reject.log` 追加一行（只记判定用的头，
+  不记 cookie / 正文，上限 128 KiB），下次再遇到 403 直接看那一行就知道是哪个头判的。
+- **跨站写请求一律拒，跨站读只放行顶级导航**：门控替官方服务补回被绕过的 CSRF 检查——
+  `Origin` 与 Host 不一致、`Origin: null`、或 `sec-fetch-site: cross-site` 的**非 GET/HEAD**
+  请求直接 403；GET 仅在 `sec-fetch-mode: navigate`（人手点开链接、扫码跳转）时放行，
+  `<img>` / `<script>` / `no-cors` fetch 这类跨站子资源读与跨站 WebSocket 握手仍然拒。
+  （早期版本连导航一起拒，把「从微信里点入口链接」挡成了 403 的 JSON。）
 - **吊销即时生效，含已经建好的长连接**：手机的整段界面跑在一条 WebSocket 上，只拉黑「新请求」等于没踢。门控记着每条连接属于哪台设备，吊销/全部吊销时会先发 `1001 going away` 再销毁 socket（实测：吊销后那条连接当秒断开）。
 - 设备列表显示**在线/离线**（在线 = 这台设备此刻有活着的长连接）。
 - 配对码默认 **120 秒**、一次性。
@@ -287,6 +297,35 @@ PATH="$(pwd)/scripts/bin:$PATH" ELECTRON_RUN_AS_NODE=1 "$APP" "$CLI" --profile r
 
 `scripts/install.sh` 会自动生成 `scripts/bin/pnpm` 这个 shim（把
 `pnpm` 转发到 App 内置的 pnpm），因为官方 CLI 只会从 PATH 找 pnpm。
+
+### 部署到正在运行的 App（改完不生效，多半是这一步）
+
+GUI 里装的插件是 **GitHub 快照**：profile 的 `package.json` 写的是
+`github:Review977/dsh-remote`，实际跑的是
+`~/.dsh/profiles/desktop/node_modules/@local/dsh-remote/` 这份**独立拷贝**。
+改本目录的代码不会进那份拷贝——端口还在跑旧模块，改半天像没生效。
+
+```sh
+./scripts/sync.sh              # 拷进 desktop 的已安装副本
+./scripts/sync.sh remotedev    # 别的 profile
+```
+
+宿主模块按 URL 缓存，**同步完必须重启 App**；重启后拿
+`curl -s http://127.0.0.1:8790/__remote/health` 的 `version` 核对，
+版本没变就说明跑的还是旧代码。已打开的状态页也要硬刷新一次——
+旧页面里没有表单令牌。
+
+### 测试（零依赖，`node --test`）
+
+```sh
+ELECTRON_RUN_AS_NODE=1 "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness" \
+  --test test/*.test.js
+```
+
+- `test/gate.test.js`：准入判定（本机 / 跨站写与读 / cookie 过滤 / 401 重试）的纯函数断言；
+- `test/gate.integration.test.js`：假上游 + 真门控，跑完「未配对 → 配对 → 转发 → 跨站导航 → 吊销」整条链；
+- `test/inject.test.js`：用 `new Function` 断言注入到 index 的每段脚本都能解析
+  （模板字符串转义出过错就是**静默失效**，手机上只表现为按钮没反应，肉眼查不出来）。
 
 ### 实测验证（全部跑通，含真机）
 
@@ -392,9 +431,10 @@ hostname，域名不变就不用重配）；不拷就在手机上重配一次。
 
 还没吸收、但值得考虑的（按性价比排）：
 
-- **扫码配对**。他们把密钥放在 URL 的 **fragment** 里（`#...`），fragment 不会进
-  服务器日志，这点比我手输 6 位码更干净。代价是要一个 QR 编码器（自带约 250 行，
-  或引入一个依赖，破坏零依赖）。
+- **扫码配对**。纯 JS QR 引擎是现成的：`src/client/qrcode.js`（约 18KB，MIT，
+  输出 SVG，零依赖），可以直接裁进状态页。**但别照抄它的 URL 形态**：他们的二维码把
+  token 放进 `?token=` 查询串（`QrPairingCard.jsx`），会进服务器访问日志、浏览器历史
+  和 Referer；抄就抄成 `#code=...`，fragment 不会上传到服务端。
 - **本地审计**（`audit-YYYY-MM-DD.jsonl`，保留 30 天，只删自己命名的文件，**从不
   记录正文**，还会按「够长的 token 形状」把值判定为敏感而丢弃）。远程入口有审计
   确实更有底，约 150 行。
@@ -423,9 +463,11 @@ profile（`scripts/install.sh` 用的就是它），所以装机不用走图形�
 | `lib/pages.js` | 状态页（含隧道/域名配置表单）与配对页（纯 HTML） |
 | `lib/profile-config.js` | 找 profile、读写受管配置块 |
 | `lib/client.js` | 客户端半侧：插件页里的「远程门控」入口（手写 bundle，零构建） |
+| `lib/icons/` | 主屏幕图标（120–1024 PNG）+ `manifest.webmanifest`；由门控在 `/__dsh-remote-assets/` 下公开提供 |
 | `lib/net.js` | 「本机请求」判定（含反代陷阱与 `bind: lan` 情形）、局域网地址挑选、Cookie、HTML 转义 |
 | `cordis.patch.yml` | 插件自己的 patch 层（含默认配置） |
 | `scripts/install.sh` | 装进指定 profile（desktop 也支持） |
+| `scripts/sync.sh` | 把改动同步进 profile 里那份已安装副本（不重启不生效，见「部署到正在运行的 App」） |
 | `scripts/own-domain.sh` | 一次性接上自己的域名（建隧道 / 绑 DNS / 写配置 / 切 profile） |
 
 ## 下一步可以做的

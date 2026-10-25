@@ -17,6 +17,7 @@
  */
 
 import { readFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { DeviceStore, defaultDevicesFile } from './lib/devices.js'
 import { createGate } from './lib/gate.js'
 import { createInnerAuth } from './lib/inner-auth.js'
@@ -97,6 +98,31 @@ try{Object.defineProperty(crypto,'randomUUID',{value:f,writable:true,configurabl
 }catch(e){}})();`
 
 /**
+ * 非安全上下文（纯 HTTP + 局域网 IP）下 navigator.clipboard 是 undefined，
+ * 官方界面里任何「复制」按钮都会直接抛 TypeError。这里用 execCommand 兜一个
+ * writeText，原生可用时什么都不做。
+ */
+const CLIPBOARD_POLYFILL = `(function(){try{
+if(typeof navigator==='undefined')return;
+if(navigator.clipboard&&typeof navigator.clipboard.writeText==='function')return;
+var writeText=function(text){try{
+var ta=document.createElement('textarea');
+ta.value=String(text==null?'':text);
+ta.setAttribute('readonly','');
+ta.style.position='fixed';ta.style.top='-9999px';ta.style.left='-9999px';
+document.body.appendChild(ta);ta.select();
+var ok=document.execCommand('copy');document.body.removeChild(ta);
+return ok?Promise.resolve():Promise.reject(new Error('copy failed'));
+}catch(err){return Promise.reject(err);}};
+var readText=function(){return Promise.reject(new Error('clipboard.readText unavailable in insecure context'));};
+try{if(!navigator.clipboard)navigator.clipboard={};
+if(typeof navigator.clipboard.writeText!=='function')navigator.clipboard.writeText=writeText;
+if(typeof navigator.clipboard.readText!=='function')navigator.clipboard.readText=readText;
+}catch(err){
+try{Object.defineProperty(navigator,'clipboard',{value:{writeText:writeText,readText:readText},configurable:true});}catch(e2){}}
+}catch(e){}})();`
+
+/**
  * 手机适配：只作用于窄屏竖屏，桌面完全不受影响。
  * 选择器按官方 CSS Modules 的语义后缀取（`[class$="_composerSeat"]` 这类），
  * 官方重构换 hash 时仍然有效。
@@ -123,6 +149,9 @@ const MOBILE_CSS = `
  */
 const MOBILE_SCRIPT = `(function(){try{
 if(document.getElementById('dsh-remote-mobile'))return;
+// 移动端 UA 给 <html> 打个作用域钩子：自定义样式想「只手机上生效」时用它当选择器前缀。
+// 注意样式本身按视口宽度生效（媒体查询），和 UA 无关——PC 拉小窗口也会命中。
+if(/Android|iPhone|iPod|iPad|Mobile Safari|IEMobile|BlackBerry|webOS|Mobi/i.test(navigator.userAgent||'')){document.documentElement.setAttribute('data-dsh-mobile','1');}
 var m=document.querySelector('meta[name=viewport]');
 if(m){if(String(m.getAttribute('content')||'').indexOf('viewport-fit')<0)m.setAttribute('content',(m.getAttribute('content')||'')+', viewport-fit=cover');}
 else{m=document.createElement('meta');m.setAttribute('name','viewport');m.setAttribute('content','width=device-width, initial-scale=1, viewport-fit=cover');document.head.appendChild(m);}
@@ -146,6 +175,16 @@ function optionalService(ctx, key) {
 export function apply(ctx, rawConfig) {
   const config = normalizeConfig(rawConfig)
   const log = (message) => console.log(`[dsh-remote] ${message}`)
+
+  /**
+   * 管理面表单令牌：每次进程启动换一次，只出现在门控自己渲染的 HTML 里。
+   *
+   * 为什么需要它（实测故障）：状态页的按钮全走表单 POST，而「这是不是同源」原来
+   * 只靠浏览器发的 Origin 判定。在不透明来源的载体里（Origin: null），页面能正常
+   * 打开、但每个 POST 都被判成跨站 → 生成配对码 / 保存配置全部 403，手机也配不上。
+   * 令牌不依赖浏览器的来源语义，跨源页面又读不到这份 HTML，所以它能把这条路走通。
+   */
+  const adminToken = randomBytes(16).toString('hex')
 
   if (!config.enabled) {
     log('已在配置里关闭（enabled: false），门控不启动')
@@ -279,6 +318,7 @@ export function apply(ctx, rawConfig) {
     gateName: 'DSH 远程门控',
     profileName,
     version: VERSION,
+    adminToken,
   })
 
   ctx.effect(() => {
@@ -319,6 +359,38 @@ export function apply(ctx, rawConfig) {
     }
   }, 'dsh-remote: gate listener')
 
+
+  /**
+   * 主屏幕图标：必须走 tapIndex（<head> 里的 <link>）。
+   *
+   * 结构化行只会被渲染进 <body>，表达不了 head 里的 link；而 iOS「添加到主屏幕」
+   * 只认 head 里的 apple-touch-icon（没有就截一张页面图当图标——所以之前是糊的）。
+   * tapIndex 只在「HTTP 发 index」时跑，正好覆盖手机这条路；桌面窗口自己渲染
+   * index，不需要主屏幕图标。
+   */
+  const ICON_HEAD = [
+    '<link rel="icon" type="image/png" sizes="192x192" href="/__dsh-remote-assets/icon-192.png">',
+    '<link rel="apple-touch-icon" sizes="180x180" href="/__dsh-remote-assets/icon-180.png">',
+    '<link rel="apple-touch-icon" sizes="167x167" href="/__dsh-remote-assets/icon-167.png">',
+    '<link rel="apple-touch-icon" sizes="152x152" href="/__dsh-remote-assets/icon-152.png">',
+    '<link rel="manifest" href="/__dsh-remote-assets/manifest.webmanifest">',
+  ].join('')
+
+  ctx.effect(() => {
+    const tap = ctx.webServer.tapIndex
+    if (typeof tap !== 'function') {
+      log('webServer 没有 tapIndex，主屏幕图标注入跳过（其余功能不受影响）')
+      return
+    }
+    return tap.call(ctx.webServer, (html) => {
+      if (typeof html !== 'string' || html.includes('__dsh-remote-assets')) return html
+      const head = /<head[^>]*>/i.exec(html)
+      if (head === null) return html
+      const at = head.index + head[0].length
+      return html.slice(0, at) + ICON_HEAD + html.slice(at)
+    })
+  }, 'dsh-remote: icon links')
+
   // 手机适配 + uuid polyfill + 门控地址：用 `webserver/index-inject` 的结构化行注入。
   //
   // 为什么不用 tapIndex：那是 HTML 字符串改写，只有「HTTP 发 index」的载体（SPA dist
@@ -331,6 +403,7 @@ export function apply(ctx, rawConfig) {
     }
     table.push({ kind: 'script', placement: 'head', text: MOBILE_SCRIPT })
     table.push({ kind: 'script', placement: 'head', text: UUID_POLYFILL })
+    table.push({ kind: 'script', placement: 'head', text: CLIPBOARD_POLYFILL })
   }), 'dsh-remote: index rows')
 
   // 客户端半侧的兜底取址：万一窗口在门控起来之前就渲染完了（拿不到上面的全局），

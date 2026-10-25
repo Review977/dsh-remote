@@ -1,0 +1,15 @@
+{
+  "name": "DSH 远程门控",
+  "short_name": "DSH",
+  "description": "从手机接管这台 Mac 上的 DeepSeek Harness 会话",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "background_color": "#151517",
+  "theme_color": "#151517",
+  "icons": [
+    { "src": "/__dsh-remote-assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/__dsh-remote-assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/__dsh-remote-assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
